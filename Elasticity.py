@@ -27,7 +27,13 @@ E = 1.0
 v = 0.2
 
 
-def ElasticMatrix():
+ni = args.ni
+nj = args.nj
+
+
+
+
+def ElasticMatrix(E, v):
     D = np.zeros((6, 6))
 
     for i in range(3):
@@ -46,7 +52,8 @@ if args.case == 0:
     solfunc = lambda x, y, z: [y, 0.0, 0.0]
     ffunc = lambda x, y, z: [0.0, 0.0, 0.0]
 
-else:
+elif args.case == 1:
+
     def ffunc(x, y, z):
         f = [None, None, None]
         f[0] = pi*pi*E*(-4*v + 3)*sin(pi*x)*sin(pi*y)/(2*(v + 1)*(2*v - 1))
@@ -59,19 +66,92 @@ else:
         return [sin(pi*x)*sin(pi*y), 0, 0]
 
 
+elif args.case == 2:
 
-ni = args.ni
-nj = args.nj
+    def ffunc(x, y, z):
+        f = [None, None, None]
+        f[0] = -pi**2*E*cos(pi*x)*cos(pi*y)/(2*(v + 1)*(2*v - 1))
+        f[1] =  pi**2*E*(3 - 4*v)*sin(pi*x)*sin(pi*y)/(2*(v + 1)*(2*v - 1))
+        f[2] =  0
+
+        return f
+
+    def solfunc(x, y, z):
+        return [0, sin(pi*x)*sin(pi*y), 0]
+
+elif args.case == 3:
+
+    def ffunc(x, y, z):
+        f = [None, None, None]
+        f[0] = -pi**2*E*(v - 1)*sin(pi*x)/((v + 1)*(2*v - 1))
+        f[1] = 0
+        f[2] = 0
+
+        return f
+
+    def solfunc(x, y, z):
+        return [sin(pi*x), 0, 0]
+
+elif args.case == 4:
+
+    def ffunc(x, y, z):
+        f = [None, None, None]
+        f[0] = 0
+        f[1] = 0
+        f[2] = 0
+
+        return f
+
+    def solfunc(x, y, z):
+        if y <= 1e-15:
+            return [1 - x/args.li, 0, 0]
+        if x <= 1e-15:
+            return [1 - y/args.lj, 0, 0]
+        return [0, 0, 0]
+
+    E = None
+    v = None
+
+    youngElem = np.zeros(ni*nj) + 1
+    poissonElem = np.zeros(ni*nj) + 0.2
+
+elif args.case == 5:
+
+    def ffunc(x, y, z):
+        f = [None, None, None]
+        f[0] = 0
+        f[1] = 0
+        f[2] = 0
+
+        return f
+
+    def solfunc(x, y, z):
+        if y <= 1e-15:
+            return [1 - x/args.li, 0, 0]
+        if x <= 1e-15:
+            return [1 - y/args.lj, 0, 0]
+        return [0, 0, 0]
+
+    E = None
+    v = None
+
+    youngElem = np.loadtxt("young.txt")
+    poissonElem = np.zeros(ni*nj) + 0.2
+
+    ni = 8
+    nj = 8
+
 
 dx = args.li / ni
 dy = args.lj / nj
 
-
 area = dx*dy*0.5
 
+nelem = ni*nj
 qtdNodes = (ni+1)*(nj+1)
 
 neq = 3*qtdNodes
+
 
 coords = np.zeros((3, qtdNodes))
 
@@ -97,6 +177,10 @@ if args.plot and False:
     fig, ax = plt.subplots(1, 1)
 
 iel = 0
+
+young = []
+poisson = []
+
 for j in range(nj):
     for i in range(ni):
 
@@ -104,6 +188,12 @@ for j in range(nj):
 
         triangles.append((inode, inode+ni+1, inode+1))
         triangles.append((inode+1, inode+ni+1, inode+ni+2))
+
+        young.append(youngElem[iel] if E is None else E)
+        young.append(youngElem[iel] if E is None else E)
+
+        poisson.append(poissonElem[iel] if v is None else v)
+        poisson.append(poissonElem[iel] if v is None else v)
 
         if args.plot and False:
             closed = list(triangles[-2])
@@ -129,7 +219,7 @@ B = np.zeros((6, 9))
 Kg = np.zeros((neq, neq))
 rhs = np.zeros(neq)
 
-D = ElasticMatrix()
+
 
 if args.txt:
     np.savetxt("D.txt", D, delimiter="\t")
@@ -165,9 +255,7 @@ for it, t in enumerate(triangles):
     deriv[2, 2] = 0.0
 
     xc = coords[0, t[0]] + coords[0, t[1]] + coords[0, t[2]]
-
     yc = coords[1, t[0]] + coords[1, t[1]] + coords[1, t[2]]
-
     zc = coords[2, t[0]] + coords[2, t[1]] + coords[2, t[2]]
 
     xc /= 3
@@ -177,9 +265,9 @@ for it, t in enumerate(triangles):
     fvalue = ffunc(xc, yc, zc)
 
     for inode in t:
-        rhs[3*inode]   -= area*fvalue[0] / 3.0
-        rhs[3*inode+1] -= area*fvalue[1] / 3.0
-        rhs[3*inode+2] -= area*fvalue[2] / 3.0
+        rhs[3*inode]   -= area * fvalue[0] / 3.0
+        rhs[3*inode+1] -= area * fvalue[1] / 3.0
+        rhs[3*inode+2] -= area * fvalue[2] / 3.0
 
 
     for i in range(3):
@@ -199,6 +287,8 @@ for it, t in enumerate(triangles):
 
     if args.txt:
         np.savetxt("B_%d.txt" % it, B, delimiter="\t")
+
+    D = ElasticMatrix(young[it], poisson[it])
 
     Bt = np.transpose(B)
     K = np.dot(Bt, D)
@@ -282,10 +372,6 @@ if args.plot:
 
         im = axs[i,1].imshow(solanalitic[i::3].reshape((nj+1, ni+1)), interpolation="bilinear", origin='lower', cmap=cm_castelletto)
         fig.colorbar(im, ax=axs[i,1]).ax.tick_params(labelsize=12)
-
-
-
-
 
     plt.show()
     plt.close()
