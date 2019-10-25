@@ -1,34 +1,71 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
+from math import *
+from matplotlib.colors import LinearSegmentedColormap
 
-
+colors = [(0.000, 0.000, 0.559), (0.000, 0.000, 0.766), (0.000, 0.000, 0.973), (0.000, 0.184, 0.996), (0.000, 0.391, 0.996), (0.000, 0.598, 0.996), (0.000, 0.805, 0.996), (0.012, 0.996, 0.984), (0.219, 0.996, 0.777), (0.426, 0.996, 0.570), (0.633, 0.996, 0.363), (0.840, 0.996, 0.156), (0.996, 0.945, 0.000), (0.996, 0.742, 0.000), (0.996, 0.535, 0.000), (0.996, 0.328, 0.000), (0.996, 0.121, 0.000), (0.910, 0.000, 0.000), (0.703, 0.000, 0.000), (0.500, 0.000, 0.000)]
+cm_castelletto = LinearSegmentedColormap.from_list('mateus', colors, N=20)
 
 
 # Definicoes dos parametros para submissao
 parser = argparse.ArgumentParser(description='Problema de Elasticidade com triangulos')
 parser.add_argument('--plot', action='store_true', help='Plota os arquivos de saida')
 parser.add_argument('--show', action='store_true', help='Mostra plot')
+parser.add_argument('--case', '-c', default=0, type=int, help='Numero do caso')
 parser.add_argument('--txt', action='store_true', help='Guarda matriz em txt')
 
 parser.add_argument('--ni', default=2, type=int, help="Tamanho do grid em elementos ni")
 parser.add_argument('--nj', default=2, type=int, help="Tamanho do grid em elementos nj")
 
-
-
-solanaliticfunction = lambda x, y, z: [y, 0.0, 0.0]
-f = lambda x, y, z: [0.0, 0.0, 0.0]
-
+parser.add_argument('--li', default=1.0, type=int, help="Tamanho em metros do grid na direcao i")
+parser.add_argument('--lj', default=1.0, type=int, help="Tamanho em metros do grid na direcao j")
 args = parser.parse_args()
+
+
+E = 1.0
+v = 0.2
+
+
+def ElasticMatrix():
+    D = np.zeros((6, 6))
+
+    for i in range(3):
+        for j in range(3):
+            D[i,j] = 1 - v if i == j else v
+
+    for i in range(3, 6):
+        D[i, i] = (1-2*v)/2
+
+    D = (E / ((1+v)*(1-2*v))) * D
+
+    return D
+
+
+if args.case == 0:
+    solfunc = lambda x, y, z: [y, 0.0, 0.0]
+    ffunc = lambda x, y, z: [0.0, 0.0, 0.0]
+
+else:
+    def ffunc(x, y, z):
+        f = [None, None, None]
+        f[0] = pi*pi*E*(-4*v + 3)*sin(pi*x)*sin(pi*y)/(2*(v + 1)*(2*v - 1))
+        f[1] = -pi*pi*E*cos(pi*x)*cos(pi*y)/(2*(v + 1)*(2*v - 1))
+        f[2] = 0
+
+        return f
+
+    def solfunc(x, y, z):
+        return [sin(pi*x)*sin(pi*y), 0, 0]
+
+
 
 ni = args.ni
 nj = args.nj
 
-dx = 1.0 / ni
-dy = 1.0 / nj
+dx = args.li / ni
+dy = args.lj / nj
 
-E = 1.0
-v = 0.2
 
 area = dx*dy*0.5
 
@@ -56,7 +93,7 @@ for j in range(nj+1):
 triangles = []
 
 
-if args.plot:
+if args.plot and False:
     fig, ax = plt.subplots(1, 1)
 
 iel = 0
@@ -68,7 +105,7 @@ for j in range(nj):
         triangles.append((inode, inode+ni+1, inode+1))
         triangles.append((inode+1, inode+ni+1, inode+ni+2))
 
-        if args.plot:
+        if args.plot and False:
             closed = list(triangles[-2])
             closed.append(triangles[-2][0])
             ax.plot(coords[0, closed], coords[1, closed])
@@ -87,22 +124,16 @@ if args.plot:
 M = np.zeros((3, 3))
 deriv = np.zeros((3, 3))
 B = np.zeros((6, 9))
-D = np.zeros((6, 6))
+
 
 Kg = np.zeros((neq, neq))
+rhs = np.zeros(neq)
 
-
-for i in range(3):
-    for j in range(3):
-        D[i,j] = 1 - v if i == j else v
-
-for i in range(3, 6):
-    D[i, i] = (1-2*v)/2
-
-D = (E / ((1+v)*(1-2*v))) * D
+D = ElasticMatrix()
 
 if args.txt:
     np.savetxt("D.txt", D, delimiter="\t")
+
 
 for it, t in enumerate(triangles):
     M[0, 0] = 1.0
@@ -132,6 +163,23 @@ for it, t in enumerate(triangles):
     deriv[2, 0] = 0.0
     deriv[2, 1] = 0.0
     deriv[2, 2] = 0.0
+
+    xc = coords[0, t[0]] + coords[0, t[1]] + coords[0, t[2]]
+
+    yc = coords[1, t[0]] + coords[1, t[1]] + coords[1, t[2]]
+
+    zc = coords[2, t[0]] + coords[2, t[1]] + coords[2, t[2]]
+
+    xc /= 3
+    yc /= 3
+    zc /= 3
+
+    fvalue = ffunc(xc, yc, zc)
+
+    for inode in t:
+        rhs[3*inode]   -= area*fvalue[0] / 3.0
+        rhs[3*inode+1] -= area*fvalue[1] / 3.0
+        rhs[3*inode+2] -= area*fvalue[2] / 3.0
 
 
     for i in range(3):
@@ -187,29 +235,29 @@ for i in range(len(border)):
 if args.txt:
     np.savetxt("Kg.txt", Kg, delimiter="\t")
 
-rhs = np.zeros(neq)
 
+# Montagem do lado direito para condicoes de Dirichlet
 inode = 0
 for j in range(nj+1):
     for i in range(ni+1):
 
-        if border[inode]:
-            rhs[3*inode] = coords[1, inode]
+        x, y, z = coords[0, inode], coords[1, inode], coords[2, inode]
 
-        else:
-            x, y, z = coords[0, inode], coords[1, inode], coords[2, inode]
-            rhs[3*inode], rhs[3*inode+1], rhs[3*inode+2] = f(x, y, z)
+        if border[inode]:
+            rhs[3*inode], rhs[3*inode+1], rhs[3*inode+2] = solfunc(x, y, z)
 
         inode += 1
 
 
 if args.txt:
     np.savetxt("rhsx.txt", rhs[0::3])
+    np.savetxt("rhs.txt", rhs)
 
 sol = np.linalg.solve(Kg, rhs)
 
 if args.txt:
     np.savetxt("solx.txt", sol[0::3])
+    np.savetxt("sol.txt", sol)
 
 
 
@@ -218,8 +266,26 @@ solanalitic = np.zeros(neq)
 for inode in range(qtdNodes):
     x, y, z = coords[0, inode], coords[1, inode], coords[2, inode]
 
-    solanalitic[3*inode], solanalitic[3*inode+1], solanalitic[3*inode+2] = solanaliticfunction(x, y, z)
-
+    solanalitic[3*inode], solanalitic[3*inode+1], solanalitic[3*inode+2] = solfunc(x, y, z)
 
 
 print("Diferenca entre encontrada e analitica = %e" % (np.linalg.norm(sol - solanalitic)))
+print("Diferenca entre encontrada e analitica = %e" % (np.linalg.norm(sol - solanalitic)/np.linalg.norm(solanalitic)))
+
+
+if args.plot:
+    fig, axs = plt.subplots(3, 2)
+
+    for i in range(3):
+        im = axs[i,0].imshow(sol[i::3].reshape((nj+1, ni+1)), interpolation="bilinear", origin='lower', cmap=cm_castelletto)
+        fig.colorbar(im, ax=axs[i,0]).ax.tick_params(labelsize=12)
+
+        im = axs[i,1].imshow(solanalitic[i::3].reshape((nj+1, ni+1)), interpolation="bilinear", origin='lower', cmap=cm_castelletto)
+        fig.colorbar(im, ax=axs[i,1]).ax.tick_params(labelsize=12)
+
+
+
+
+
+    plt.show()
+    plt.close()
