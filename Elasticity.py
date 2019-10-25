@@ -1,8 +1,28 @@
+import matplotlib.pyplot as plt
 import numpy as np
+import argparse
 
 
-ni = 2
-nj = 2
+
+
+# Definicoes dos parametros para submissao
+parser = argparse.ArgumentParser(description='Problema de Elasticidade com triangulos')
+parser.add_argument('--plot', action='store_true', help='Plota os arquivos de saida')
+parser.add_argument('--show', action='store_true', help='Mostra plot')
+parser.add_argument('--txt', action='store_true', help='Guarda matriz em txt')
+
+parser.add_argument('--ni', default=2, type=int, help="Tamanho do grid em elementos ni")
+parser.add_argument('--nj', default=2, type=int, help="Tamanho do grid em elementos nj")
+
+
+
+solanaliticfunction = lambda x, y, z: [y, 0.0, 0.0]
+f = lambda x, y, z: [0.0, 0.0, 0.0]
+
+args = parser.parse_args()
+
+ni = args.ni
+nj = args.nj
 
 dx = 1.0 / ni
 dy = 1.0 / nj
@@ -36,6 +56,8 @@ for j in range(nj+1):
 triangles = []
 
 
+if args.plot:
+    fig, ax = plt.subplots(1, 1)
 
 iel = 0
 for j in range(nj):
@@ -46,8 +68,21 @@ for j in range(nj):
         triangles.append((inode, inode+ni+1, inode+1))
         triangles.append((inode+1, inode+ni+1, inode+ni+2))
 
+        if args.plot:
+            closed = list(triangles[-2])
+            closed.append(triangles[-2][0])
+            ax.plot(coords[0, closed], coords[1, closed])
+
+            closed = list(triangles[-1])
+            closed.append(triangles[-1][0])
+            ax.plot(coords[0, closed], coords[1, closed])
+
 
         iel+=1
+
+if args.plot:
+    plt.show()
+    plt.close()
 
 M = np.zeros((3, 3))
 deriv = np.zeros((3, 3))
@@ -66,9 +101,10 @@ for i in range(3, 6):
 
 D = (E / ((1+v)*(1-2*v))) * D
 
-np.savetxt("D.txt", D, delimiter="\t")
+if args.txt:
+    np.savetxt("D.txt", D, delimiter="\t")
 
-for t in triangles:
+for it, t in enumerate(triangles):
     M[0, 0] = 1.0
     M[1, 0] = 1.0
     M[2, 0] = 1.0
@@ -80,8 +116,6 @@ for t in triangles:
     M[0, 2] = coords[1, t[0]]
     M[1, 2] = coords[1, t[1]]
     M[2, 2] = coords[1, t[2]]
-
-    print(M)
 
     Minv = np.linalg.inv(M)
 
@@ -99,6 +133,7 @@ for t in triangles:
     deriv[2, 1] = 0.0
     deriv[2, 2] = 0.0
 
+
     for i in range(3):
 
         B[0,0 + i*3] = deriv[0, i]
@@ -114,13 +149,15 @@ for t in triangles:
         B[5,1 + i*3] = deriv[2, i]
         B[5,2 + i*3] = deriv[1, i]
 
-    np.savetxt("B.txt", B, delimiter="\t")
+    if args.txt:
+        np.savetxt("B_%d.txt" % it, B, delimiter="\t")
 
     Bt = np.transpose(B)
     K = np.dot(Bt, D)
     K = np.dot(K, B) * area
 
-    np.savetxt("K.txt", K, delimiter="\t")
+    if args.txt:
+        np.savetxt("K.txt", K, delimiter="\t")
 
     g = np.zeros(9, dtype="int")
 
@@ -147,19 +184,42 @@ for i in range(len(border)):
         Kg[3*i+1, 3*i+1] = 1
         Kg[3*i+2, 3*i+2] = 1
 
-np.savetxt("Kg.txt", Kg, delimiter="\t")
+if args.txt:
+    np.savetxt("Kg.txt", Kg, delimiter="\t")
 
 rhs = np.zeros(neq)
 
 inode = 0
 for j in range(nj+1):
     for i in range(ni+1):
+
         if border[inode]:
             rhs[3*inode] = coords[1, inode]
+
+        else:
+            x, y, z = coords[0, inode], coords[1, inode], coords[2, inode]
+            rhs[3*inode], rhs[3*inode+1], rhs[3*inode+2] = f(x, y, z)
 
         inode += 1
 
 
+if args.txt:
+    np.savetxt("rhsx.txt", rhs[0::3])
+
 sol = np.linalg.solve(Kg, rhs)
 
-np.savetxt("solx.txt", rhs[0::3])
+if args.txt:
+    np.savetxt("solx.txt", sol[0::3])
+
+
+
+solanalitic = np.zeros(neq)
+
+for inode in range(qtdNodes):
+    x, y, z = coords[0, inode], coords[1, inode], coords[2, inode]
+
+    solanalitic[3*inode], solanalitic[3*inode+1], solanalitic[3*inode+2] = solanaliticfunction(x, y, z)
+
+
+
+print("Diferenca entre encontrada e analitica = %e" % (np.linalg.norm(sol - solanalitic)))
