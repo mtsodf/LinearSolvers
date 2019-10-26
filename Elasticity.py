@@ -3,6 +3,8 @@ import numpy as np
 import argparse
 from math import *
 from matplotlib.colors import LinearSegmentedColormap
+from scipy.sparse.linalg import gmres
+from scipy.sparse import coo_matrix
 
 colors = [(0.000, 0.000, 0.559), (0.000, 0.000, 0.766), (0.000, 0.000, 0.973), (0.000, 0.184, 0.996), (0.000, 0.391, 0.996), (0.000, 0.598, 0.996), (0.000, 0.805, 0.996), (0.012, 0.996, 0.984), (0.219, 0.996, 0.777), (0.426, 0.996, 0.570), (0.633, 0.996, 0.363), (0.840, 0.996, 0.156), (0.996, 0.945, 0.000), (0.996, 0.742, 0.000), (0.996, 0.535, 0.000), (0.996, 0.328, 0.000), (0.996, 0.121, 0.000), (0.910, 0.000, 0.000), (0.703, 0.000, 0.000), (0.500, 0.000, 0.000)]
 cm_castelletto = LinearSegmentedColormap.from_list('mateus', colors, N=20)
@@ -64,7 +66,6 @@ elif args.case == 1:
 
     def solfunc(x, y, z):
         return [sin(pi*x)*sin(pi*y), 0, 0]
-
 
 elif args.case == 2:
 
@@ -152,6 +153,14 @@ qtdNodes = (ni+1)*(nj+1)
 
 neq = 3*qtdNodes
 
+print("------------------------------------------")
+print("            Dados Utilizados              ")
+print("------------------------------------------")
+print("      ni = %6d  nj = %6d" % (ni, nj))
+print("      dx = %6.3f  dy = %6.3f" % (dx, dy))
+print("------------------------------------------")
+print("")
+
 
 coords = np.zeros((3, qtdNodes))
 
@@ -216,10 +225,12 @@ deriv = np.zeros((3, 3))
 B = np.zeros((6, 9))
 
 
-Kg = np.zeros((neq, neq))
 rhs = np.zeros(neq)
 
-
+# Vetores da matriz de rigidez
+row = []
+col = []
+data = []
 
 if args.txt:
     np.savetxt("D.txt", D, delimiter="\t")
@@ -307,23 +318,29 @@ for it, t in enumerate(triangles):
 
     for j in range(9):
         for i in range(9):
-            Kg[g[i], g[j]] += K[i, j]
+            inode = g[i] // 3
+            if not border[inode]:
+                #Kg[g[i], g[j]] += K[i, j]
+                row.append(g[i])
+                col.append(g[j])
+                data.append(K[i, j])
 
 
 for i in range(len(border)):
 
     if border[i]:
 
-        Kg[3*i+0, :] = 0
-        Kg[3*i+1, :] = 0
-        Kg[3*i+2, :] = 0
+        for offset in range(3):
+            row.append(3*i+offset)
+            col.append(3*i+offset)
+            data.append(1)
 
-        Kg[3*i+0, 3*i+0] = 1
-        Kg[3*i+1, 3*i+1] = 1
-        Kg[3*i+2, 3*i+2] = 1
+
+Kg = coo_matrix((data, (row, col)), shape=(neq, neq))
+
 
 if args.txt:
-    np.savetxt("Kg.txt", Kg, delimiter="\t")
+    np.savetxt("Kg.txt", Kg.toarray(), delimiter="\t")
 
 
 # Montagem do lado direito para condicoes de Dirichlet
@@ -343,7 +360,11 @@ if args.txt:
     np.savetxt("rhsx.txt", rhs[0::3])
     np.savetxt("rhs.txt", rhs)
 
-sol = np.linalg.solve(Kg, rhs)
+
+sol, exitCode = gmres(Kg, rhs)
+
+if exitCode != 0:
+    print("Gmres não convergiu.")
 
 if args.txt:
     np.savetxt("solx.txt", sol[0::3])
