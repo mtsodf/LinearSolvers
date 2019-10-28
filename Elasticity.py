@@ -205,9 +205,11 @@ def RunCase(ni, nj, E, v, verbose=True):
     rhs = np.zeros(neq)
 
     # Vetores da matriz de rigidez
-    row = []
-    col = []
-    data = []
+    maxDataSize = ni*nj*9*9*2
+    row = np.zeros(maxDataSize, dtype="int")
+    col = np.zeros(maxDataSize, dtype="int")
+    data = np.zeros(maxDataSize)
+    dataInd = 0
 
     if args.txt:
         np.savetxt("D.txt", D, delimiter="\t")
@@ -298,21 +300,25 @@ def RunCase(ni, nj, E, v, verbose=True):
                 inode = g[i] // 3
                 if not border[inode]:
                     #Kg[g[i], g[j]] += K[i, j]
-                    row.append(g[i])
-                    col.append(g[j])
-                    data.append(K[i, j])
-
+                    row[dataInd] = g[i]
+                    col[dataInd] = g[j]
+                    data[dataInd] = K[i, j]
+                    dataInd +=1
 
     for i in range(len(border)):
 
         if border[i]:
 
             for offset in range(3):
-                row.append(3*i+offset)
-                col.append(3*i+offset)
-                data.append(1)
+                row[dataInd] = 3*i + offset
+                col[dataInd] = 3*i + offset
+                data[dataInd] = 1
 
+                dataInd += 1
 
+    row = row[:dataInd]
+    col = col[:dataInd]
+    data = data[:dataInd]
     Kg = coo_matrix((data, (row, col)), shape=(neq, neq))
 
     if args.spy:
@@ -429,7 +435,7 @@ if args.error:
 
     fig, ax = plt.subplots(1, 1)
 
-    ax.loglog(ns, errors)
+    ax.loglog(ns, errors, marker="o")
     ax.loglog([5, 50], [0.3, 0.3/100], ls="--", c="black")
     plt.show()
 
